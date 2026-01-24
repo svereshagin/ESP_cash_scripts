@@ -1,0 +1,1 @@
+sh tinycore_deployment_uncolored_logs.sh
