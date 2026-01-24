@@ -200,7 +200,6 @@ check_service_state() {
 
 # Получение списка ККТ
 get_dkkt_list() {
-    log_info "Получение списка ККТ..."
 
     local response
     if ! response=$(call_api "GET" "dkktList"); then
@@ -484,24 +483,24 @@ setupGismtAddress() {
     log_info "  Адрес ГИС МТ: $gismt_address"
 
     echo ""
-    log_info "Изменить параметры? (y/n): "
-    read -r change
+#    log_info "Изменить параметры? (y/n): "
+#    read -r change
 
-    if [ "$change" = "y" ] || [ "$change" = "Y" ]; then
-        # Адрес
-        read -p "Адрес ГИС МТ [$gismt_address]: " address_input
-        [ -n "$address_input" ] && gismt_address="$address_input"
-
-        # Режим совместимости
-        echo "Режим совместимости (true/false) [$compatibility_mode]: "
-        read -r compat_input
-        [ -n "$compat_input" ] && compatibility_mode="$compat_input"
-
-        # Удаленное подключение
-        echo "Удаленное подключение (true/false) [$allow_remote]: "
-        read -r remote_input
-        [ -n "$remote_input" ] && allow_remote="$remote_input"
-    fi
+#    if [ "$change" = "y" ] || [ "$change" = "Y" ]; then
+#        # Адрес
+#        read -p "Адрес ГИС МТ [$gismt_address]: " address_input
+#        [ -n "$address_input" ] && gismt_address="$address_input"
+#
+#        # Режим совместимости
+#        echo "Режим совместимости (true/false) [$compatibility_mode]: "
+#        read -r compat_input
+#        [ -n "$compat_input" ] && compatibility_mode="$compat_input"
+#
+#        # Удаленное подключение
+#        echo "Удаленное подключение (true/false) [$allow_remote]: "
+#        read -r remote_input
+#        [ -n "$remote_input" ] && allow_remote="$remote_input"
+#    fi
 
     local data="{\"compatibilityMode\":$compatibility_mode,\"allowRemoteConnection\":$allow_remote,\"gismtAddress\":\"$gismt_address\"}"
 
@@ -535,6 +534,17 @@ main() {
     echo "==================================="
 
 
+    echo "Отсылаем стандартные данные для настроек ЛМ ЧЗ, ГИС МТ"
+    export COMPATIBILITY_MODE="false"
+    export ALLOW_REMOTE_CONNECTION="true"
+    export LM_CZ_ADDRESS="10.9.130.12"
+    export LM_CZ_PORT="50063"
+    export LM_CZ_LOGIN="admin"
+    export LM_CZ_PASSWORD="admin"
+
+
+
+    log_info "Получение списка ККТ..."
     # 1. Получаем список ККТ
     if ! get_dkkt_list; then
         log_error "Не удалось получить данные ККТ"

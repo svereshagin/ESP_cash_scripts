@@ -6,6 +6,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+ #approximately for CIS cash, sum=5 mins or more
 
 # Функции логирования
 log_info() {
@@ -186,12 +187,12 @@ wait_for_server_to_reboot() {
 
         # Проверяем ping
         if ping -c 1 -W 2 "$TINYCORE_SERVER_IP" > /dev/null 2>&1; then
-            log_success "Сервер отвечает на ping"
+            log_info "Сервер отвечает на ping"
 
             # Дополнительно проверяем SSH
             if sshpass -p "$PASSWORD" ssh $SSH_OPTIONS -o ConnectTimeout=5 \
                "$TINYCORE_USERNAME@$TINYCORE_SERVER_IP" "exit" > /dev/null 2>&1; then
-                log_success "SSH подключение восстановлено"
+                log_info"SSH подключение восстановлено"
                 log_success "Сервер успешно перезагрузился"
                 return 0
             else
@@ -209,11 +210,50 @@ wait_for_server_to_reboot() {
     return 1
 }
 
+
+execute_esm_install_script() {
+  script_file="install_esm_tinycore.sh"
+  local remote_cmd="
+          echo '=== Запуск скрипта  ==='
+          cd /home/tc
+
+          if [ ! -x \"$script_file\" ]; then
+              echo 'Даю права на выполнение...'
+              chmod +x \"$script_file\"
+              echo 'Новые права доступа:'
+              ls -la \"$script_file\"
+          fi
+
+          if [ -f \"$script_file\" ]; then
+              echo 'Скрипт найден, выполняю...'
+              ./\"$script_file\"
+              EXIT_CODE=\$?
+              echo 'Скрипт завершился с кодом: '\$EXIT_CODE
+              exit \$EXIT_CODE
+          else
+              echo 'ОШИБКА: Скрипт $script_file не найден на сервере'
+              ls -la /home/tc/*.sh
+              exit 1
+          fi
+      "
+
+      # Выполняем команду на сервере
+      if sshpass -p "$PASSWORD" ssh $SSH_OPTIONS "$TINYCORE_USERNAME@$TINYCORE_SERVER_IP" "$remote_cmd"; then
+          log_success "Скрипт успешно выполнен на сервере"
+          return 0
+      else
+          local exit_code=$?
+          log_error "Скрипт завершился с ошибкой (код: $exit_code)"
+          return 1
+      fi
+}
+
+
 main() {
-    log_success "=== Развертывание ESM на TinyCore Linux ==="
+    log_info "=== Развертывание ESM на TinyCore Linux ==="
     log_info "Сервер: $TINYCORE_USERNAME@$TINYCORE_SERVER_IP"
     log_info "==========================================="
-
+    local CASH_STARTUP_TIME=120
     # Проверка подключения к серверу
     if sshpass -p "$PASSWORD" ssh $SSH_OPTIONS -o ConnectTimeout=5 \
                "$TINYCORE_USERNAME@$TINYCORE_SERVER_IP" "exit"; then
@@ -234,8 +274,41 @@ main() {
     fi
 
     if wait_for_server_to_reboot; then
-        log_success "Сервер успешно перезагружен, начинаю подключение..."
-        connect_to_server
+        log_info "Ждём старта кассового ПО, хардкод -120"
+#        sleep $CASH_STARTUP_TIME
+#
+#        echo -n "["
+#        for i in $(seq 1 $CASH_STARTUP_TIME); do
+#            sleep 1
+#            if (( i % 10 == 0 )); then
+#                echo -n "#"
+#            fi
+#        done
+#        echo "]"
+
+        echo -n "["
+            for i in $(seq 1 $CASH_STARTUP_TIME); do
+                sleep 1
+
+                # Каждые 10 секунд обновляем прогресс
+                if (( i % 10 == 0 )); then
+                    # Считаем проценты
+                    percent=$(( i * 100 / CASH_STARTUP_TIME ))
+                    # Очищаем строку и выводим прогресс
+                    echo -ne "\\r[$i/$CASH_STARTUP_TIME] ["
+                    for ((j=0; j<percent/2; j++)); do echo -n "#"; done
+                    for ((j=percent/2; j<50; j++)); do echo -n "."; done
+                    echo -n "] $percent%"
+                fi
+            done
+            echo -e "\\r[$CASH_STARTUP_TIME/$CASH_STARTUP_TIME] [##################################################] 100% ✓"
+
+
+        log_success "Ожидание завершено, начинаю отправку скрипта..."
+        echo "Отправляем скрипт на сервер"
+        sh send_esm_script.sh
+        echo "Запускаем скрипт на сервер"
+        execute_esm_install_script
     else
         log_error "Не удалось дождаться перезагрузки сервера"
         exit 1
