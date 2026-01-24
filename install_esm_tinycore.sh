@@ -483,7 +483,7 @@ setupGismtAddress() {
     log_info "  Адрес ГИС МТ: $gismt_address"
 
     echo ""
-#    log_info "Изменить параметры? (y/n): "
+    log_info "Изменить параметры? (y/n): "
 #    read -r change
 
 #    if [ "$change" = "y" ] || [ "$change" = "Y" ]; then

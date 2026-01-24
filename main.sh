@@ -6,7 +6,6 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
- #approximately for CIS cash, sum=5 mins or more
 
 # Функции логирования
 log_info() {
