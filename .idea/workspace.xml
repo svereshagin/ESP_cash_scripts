@@ -22,11 +22,14 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="06353e34-278f-4e62-8d26-d00de46ac4bb" name="Changes" comment="new po changes">
+      <change afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/qa_tasks/check_control_module_config.sh" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/qa_tasks/check_mark.sh" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/connect_to_server.sh" beforeDir="false" afterPath="$PROJECT_DIR$/qa_tasks/connect_to_server.sh" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/install_esm_tinycore.sh" beforeDir="false" afterPath="$PROJECT_DIR$/install_esm_tinycore.sh" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/main.sh" beforeDir="false" afterPath="$PROJECT_DIR$/main.sh" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/send_esm_script.sh" beforeDir="false" afterPath="$PROJECT_DIR$/send_esm_script.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/qa_tasks/check_cash_status.sh" beforeDir="false" afterPath="$PROJECT_DIR$/qa_tasks/check_cash_status.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/qa_tasks/get_configuration_from_server.sh" beforeDir="false" afterPath="$PROJECT_DIR$/qa_tasks/get_configuration_from_server.sh" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -38,7 +41,37 @@
   </component>
   <component name="ExecutionTargetManager" SELECTED_TARGET="CMakeBuildProfile:Debug" />
   <component name="Git.Settings">
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="main" />
+      </map>
+    </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitToolBoxStore">
+    <option name="recentBranches">
+      <RecentBranches>
+        <option name="branchesForRepo">
+          <list>
+            <RecentBranchesForRepo>
+              <option name="branches">
+                <list>
+                  <RecentBranch>
+                    <option name="branchName" value="dev" />
+                    <option name="lastUsedInstant" value="1769291529" />
+                  </RecentBranch>
+                  <RecentBranch>
+                    <option name="branchName" value="main" />
+                    <option name="lastUsedInstant" value="1769291528" />
+                  </RecentBranch>
+                </list>
+              </option>
+              <option name="repositoryRootUrl" value="file://$PROJECT_DIR$" />
+            </RecentBranchesForRepo>
+          </list>
+        </option>
+      </RecentBranches>
+    </option>
   </component>
   <component name="ProjectApplicationVersion">
     <option name="ide" value="CLion" />
@@ -70,7 +103,7 @@
     "cf.first.check.clang-format": "false",
     "cidr.known.project.marker": "true",
     "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
-    "git-widget-placeholder": "main",
+    "git-widget-placeholder": "dev",
     "junie.onboarding.icon.badge.shown": "true",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
@@ -104,7 +137,7 @@
       <updated>1769255327127</updated>
       <workItem from="1769255328446" duration="7086000" />
       <workItem from="1769262694793" duration="11386000" />
-      <workItem from="1769282278084" duration="8695000" />
+      <workItem from="1769282278084" duration="29076000" />
     </task>
     <task id="LOCAL-00001" summary="new po changes">
       <option name="closed" value="true" />

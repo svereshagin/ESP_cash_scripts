@@ -57,9 +57,6 @@ debug_log() {
 }
 
 
-
-
-
 # Функция для вызова API
 call_api() {
     local method="$1"
@@ -97,40 +94,24 @@ call_api() {
     return 0
 }
 
-# Парсинг JSON ответа с использованием jq (если доступен)
 parse_kkt_response() {
     local response="$1"
 
-    # Проверяем наличие jq
-    if command -v jq >/dev/null 2>&1; then
-        debug_log "Используем jq для парсинга JSON"
-        KKT_SERIAL=$(echo "$response" | jq -r '.kktSerial // empty')
-        FN_SERIAL=$(echo "$response" | jq -r '.fnSerial // empty')
-        KKT_INN=$(echo "$response" | jq -r '.kktInn // empty')
-        KKT_RNM=$(echo "$response" | jq -r '.kktRnm // empty')
-        MODEL_NAME=$(echo "$response" | jq -r '.modelName // empty')
-        DKKT_VERSION=$(echo "$response" | jq -r '.dkktVersion // empty')
-        DEVELOPER=$(echo "$response" | jq -r '.developer // empty')
-        MANUFACTURER=$(echo "$response" | jq -r '.manufacturer // empty')
-        SHIFT_STATE=$(echo "$response" | jq -r '.shiftState // empty')
-    else
-        debug_log "Используем sed для парсинга JSON"
-        # Fallback на sed если jq не установлен
-        KKT_SERIAL=$(echo "$response" | sed -n 's/.*"kktSerial":"\([^"]*\)".*/\1/p')
-        FN_SERIAL=$(echo "$response" | sed -n 's/.*"fnSerial":"\([^"]*\)".*/\1/p')
-        KKT_INN=$(echo "$response" | sed -n 's/.*"kktInn":"\([^"]*\)".*/\1/p')
-        KKT_RNM=$(echo "$response" | sed -n 's/.*"kktRnm":"\([^"]*\)".*/\1/p')
-        MODEL_NAME=$(echo "$response" | sed -n 's/.*"modelName":"\([^"]*\)".*/\1/p')
-        DKKT_VERSION=$(echo "$response" | sed -n 's/.*"dkktVersion":"\([^"]*\)".*/\1/p')
-        DEVELOPER=$(echo "$response" | sed -n 's/.*"developer":"\([^"]*\)".*/\1/p')
-        MANUFACTURER=$(echo "$response" | sed -n 's/.*"manufacturer":"\([^"]*\)".*/\1/p')
-        SHIFT_STATE=$(echo "$response" | sed -n 's/.*"shiftState":"\([^"]*\)".*/\1/p')
-    fi
+    debug_log "Используем sed для парсинга JSON"
+    # Fallback на sed если jq не установлен
+    KKT_SERIAL=$(echo "$response" | sed -n 's/.*"kktSerial":"\([^"]*\)".*/\1/p')
+    FN_SERIAL=$(echo "$response" | sed -n 's/.*"fnSerial":"\([^"]*\)".*/\1/p')
+    KKT_INN=$(echo "$response" | sed -n 's/.*"kktInn":"\([^"]*\)".*/\1/p')
+    KKT_RNM=$(echo "$response" | sed -n 's/.*"kktRnm":"\([^"]*\)".*/\1/p')
+    MODEL_NAME=$(echo "$response" | sed -n 's/.*"modelName":"\([^"]*\)".*/\1/p')
+    DKKT_VERSION=$(echo "$response" | sed -n 's/.*"dkktVersion":"\([^"]*\)".*/\1/p')
+    DEVELOPER=$(echo "$response" | sed -n 's/.*"developer":"\([^"]*\)".*/\1/p')
+    MANUFACTURER=$(echo "$response" | sed -n 's/.*"manufacturer":"\([^"]*\)".*/\1/p')
+    SHIFT_STATE=$(echo "$response" | sed -n 's/.*"shiftState":"\([^"]*\)".*/\1/p')
 
     # ID = серийный номер ККТ
     KKT_ID="${KKT_SERIAL}"
 
-    # Проверяем, что получили данные
     if [ -z "$KKT_SERIAL" ]; then
         log_warning "Не удалось извлечь данные ККТ из ответа"
         return 1
@@ -467,8 +448,63 @@ configure_lm_cz() {
 }
 
 
+
+resolveGismtStatusResponse() {
+  local http_code=$(echo "$response" | tail -n1)
+  local body=$(echo "$response" | sed '$d' 2>/dev/null || echo "")
+  log_info "resolveGismtStatusResponse Ответ: $body (HTTP $http_code)"
+  case "$http_code" in
+      000)
+        log_error "❌ Ошибка сети/таймаут - нет соединения с сервером"
+        return 2  # Специальный код для повторной попытки
+        ;;
+      200|201|204)
+        log_success "✅ Настройки ГИС МТ успешно применены"
+        ;;
+      400)
+        log_error "Ошибка 400: Неверный запрос. Проверьте данные JSON"
+        log_info "Отправленные данные: $data"
+        return 1
+        ;;
+      401|403)
+        log_error "Ошибка $http_code: Проблемы с аутентификацией/авторизацией"
+        return 1
+        ;;
+      404)
+        log_error "Ошибка 404: Ресурс не найден. Проверьте KKT_ID: $KKT_ID"
+        return 1
+        ;;
+      500|502|503|504)
+        log_warning "Ошибка $http_code: Проблемы на стороне сервера, пробуем снова"
+        return 2  # Повторная попытка
+        ;;
+      28) # curl timeout
+        log_error "Таймаут подключения к серверу"
+        return 2
+        ;;
+      7) # curl couldn't connect
+        log_error "Не удалось подключиться к серверу"
+        return 2
+        ;;
+      *)
+        log_warning "Непредвиденный ответ HTTP $http_code"
+        if [ -n "$body" ]; then
+          log_info "Тело ответа: $body"
+        fi
+        return 2  # Пробуем снова
+        ;;
+    esac
+}
+
 setupGismtAddress() {
     log_info "=== Настройка ГИС МТ ==="
+
+    #retry логика программы
+    local max_attempts=6           # Максимум 6 попыток
+    local attempt_timeout=30       # Таймаут одной попытки (сек)
+    local total_timeout=300        # Общий таймаут 5 минут
+    local retry_delay=10           # Задержка между попытками
+    local start_time=$(date +%s)
 
     local url="$API_BASE/$API_VERSION/settings/$KKT_ID"
 
@@ -482,48 +518,221 @@ setupGismtAddress() {
     log_info "  Удаленное подключение: $allow_remote"
     log_info "  Адрес ГИС МТ: $gismt_address"
 
-    echo ""
-    log_info "Изменить параметры? (y/n): "
-#    read -r change
-
-#    if [ "$change" = "y" ] || [ "$change" = "Y" ]; then
-#        # Адрес
-#        read -p "Адрес ГИС МТ [$gismt_address]: " address_input
-#        [ -n "$address_input" ] && gismt_address="$address_input"
-#
-#        # Режим совместимости
-#        echo "Режим совместимости (true/false) [$compatibility_mode]: "
-#        read -r compat_input
-#        [ -n "$compat_input" ] && compatibility_mode="$compat_input"
-#
-#        # Удаленное подключение
-#        echo "Удаленное подключение (true/false) [$allow_remote]: "
-#        read -r remote_input
-#        [ -n "$remote_input" ] && allow_remote="$remote_input"
-#    fi
-
     local data="{\"compatibilityMode\":$compatibility_mode,\"allowRemoteConnection\":$allow_remote,\"gismtAddress\":\"$gismt_address\"}"
 
     log_info "Отправляю запрос..."
 
-    response=$(curl -sS -w "\n%{http_code}" \
+    for attempt in $(seq 1 $max_attempts); do
+      local current_time=$(date +%s)
+      local elapsed=$((current_time - start_time))
+
+      # Проверяем общий таймаут
+      if [ $elapsed -ge $total_timeout ]; then
+          log_error "Превышен общий лимит времени ($total_timeout секунд)"
+          return 1
+      fi
+
+      log_info "Попытка $attempt/$max_attempts (прошло ${elapsed}с из ${total_timeout}с)..."
+      response=$(curl -sS -w "\n%{http_code}\n%{time_total}" \
         --location \
         --request PUT "$url" \
         --header 'Content-Type: application/json' \
-        --data "$data")
+        --data "$data" \
+        --max-time $attempt_timeout \
+        --connect-timeout 15 \
+        --retry 0 \
+        2>&1)
+      log_info "Время выполнения curl: ${curl_time}с"
 
-    local http_code=$(echo "$response" | tail -n1)
-    local body=$(echo "$response" | sed '$d')
 
-    log_info "Ответ: $body (HTTP $http_code)"
+      local curl_time=$(echo "$response" | tail -n1)
+      response=$(echo "$response" | head -n -1)
+      log_info "Время выполнения curl: ${curl_time}с"
+      case $? in
+        0)
+        if resolveGismtStatusResponse; then
+            local total_elapsed=$(( $(date +%s) - start_time ))
+            log_success "Настройка ГИС МТ завершена успешно за ${total_elapsed} секунд"
+            return 0
+        else
+            local result_code=$?
+            if [ $result_code -eq 2 ]; then
+                # Нужно повторить
+                if [ $attempt -lt $max_attempts ]; then
+                    log_info "Повтор через ${retry_delay} секунд..."
+                    sleep $retry_delay
+                    # Увеличиваем задержку для следующей попытки (exponential backoff)
+                    retry_delay=$((retry_delay * 2))
+                    continue
+                else
+                    log_error "Исчерпаны все попытки ($max_attempts)"
+                fi
+            else
+                return 1
+            fi
+        fi
+        ;;
+    28)
+        log_error "Таймаут запроса (${attempt_timeout}с)"
+        if [ $attempt -lt $max_attempts ]; then
+            log_info "⏳ Повтор через ${retry_delay} секунд..."
+            sleep $retry_delay
+            retry_delay=$((retry_delay * 2))
+            continue
+        fi
+        ;;
+    7)
+        log_error "Не удалось подключиться к серверу $API_BASE"
+        if [ $attempt -lt $max_attempts ]; then
+            log_info "⏳ Повтор через ${retry_delay} секунд..."
+            sleep $retry_delay
+            retry_delay=$((retry_delay * 2))
+            continue
+        fi
+        ;;
+    *)
+        log_error "Неизвестная ошибка curl: $?"
+        ;;
+    esac
 
-    if [ "$http_code" -eq 200 ] || [ "$http_code" -eq 201 ] || [ "$http_code" -eq 204 ]; then
-        log_success "Настройки ГИС МТ применены успешно"
+    if [ $attempt -lt $max_attempts ]; then
+        log_info "Повтор через ${retry_delay} секунд..."
+        sleep $retry_delay
+        retry_delay=$((retry_delay * 2))
+    fi
+    done
+    log_error "Не удалось настроить ГИС МТ после $max_attempts попыток"
+    log_info ""
+    log_info "Рекомендации по устранению:"
+    log_info "  1. Проверьте доступность API: curl -v $API_BASE/health"
+    log_info "  2. Проверьте сетевые настройки и firewall"
+    log_info "  3. Попробуйте настроить вручную"
+    log_info ""
+      return 1
+}
+
+
+
+check_gismt_config() {
+    local config_file="/etc/esp/esm/um/config_${KKT_ID}.yml"
+
+    # Ищем URL ГИС МТ
+    if grep -A5 "gisMT:" "$config_file" | grep -q "url:.*https\?://"; then
+        log_info "GISMT адрес найден и валидный"
         return 0
     else
-        log_error "Ошибка настройки ГИС МТ"
+        log_info "GISMT адрес не найден или не валидный"
         return 1
     fi
+}
+
+
+#МАРКА
+extract_parameters() {
+    local response="$1"
+
+    log_info "Анализ ответа API..."
+
+    # Извлекаем параметры
+    code_val=$(echo "$response" | grep -o '"code":[0-9]*' | head -n 1 | cut -d: -f2)
+    is_checked_offline=$(echo "$response" | grep -o '"isCheckedOffline":[a-z]*' | cut -d: -f2)
+    is_blocked=$(echo "$response" | grep -o '"isBlocked":[a-z]*' | cut -d: -f2)
+    found=$(echo "$response" | grep -o '"found":[a-z]*' | cut -d: -f2)
+    valid=$(echo "$response" | grep -o '"valid":[a-z]*' | cut -d: -f2)
+
+    # Логируем параметры
+    log_info "Параметры ответа:"
+    log_info "  - code: $code_val"
+    log_info "  - isCheckedOffline: $is_checked_offline"
+    log_info "  - isBlocked: $is_blocked"
+    log_info "  - found: $found"
+    log_info "  - valid: $valid"
+}
+#МАРКА
+analyze_results() {
+    echo ""
+    log_info "Проверка результатов:"
+
+    # Проверка блокировки марки
+    if [ "$is_blocked" = "false" ]; then
+        log_success "Марка не заблокирована в системе"
+    else
+        log_error "Марка заблокирована в системе"
+    fi
+
+    # Проверка режима работы
+    if [ "$is_checked_offline" = "false" ]; then
+        log_success "Режим работы: онлайн (подключение к ГИС МТ)"
+    else
+        log_warning "Режим работы: оффлайн (локальная проверка)"
+    fi
+
+    # Проверка кода ответа
+    if [ "$code_val" = "0" ]; then
+        log_success "Код ответа API: 0 (успех)"
+    else
+        log_warning "Код ответа API: $code_val (не 0)"
+    fi
+
+    # Итоговый вывод
+    echo ""
+    log_info "Итоговая оценка работы системы:"
+
+    if [ "$is_checked_offline" = "false" ] && [ "$is_blocked" = "false" ] && [ "$code_val" = "0" ]; then
+        log_success "Система работает корректно"
+        log_success "Подключение к ГИС МТ функционирует"
+        log_success "Все проверки пройдены успешно"
+    else
+        log_warning "Обнаружены отклонения в работе системы"
+
+        if [ "$is_checked_offline" = "true" ]; then
+            log_warning "Рекомендация: Проверить подключение к ГИС МТ"
+        fi
+
+        if [ "$is_blocked" = "true" ]; then
+            log_warning "Рекомендация: Проверить статус марки в системе"
+        fi
+
+        if [ "$code_val" != "0" ]; then
+            log_warning "Рекомендация: Проверить логи API"
+        fi
+    fi
+}
+
+#МАРКА
+check_mark() {
+  log_info "Запуск проверки подключения к ГИС МТ"
+
+  log_info "Отправка запроса к API проверки кодов..."
+  response=$(curl -k -s -X POST https://localhost:51401/api/v1/codes/check \
+    --header 'Content-Type: application/json' \
+    --data '{
+      "codes": ["MDEwNjI3MTU4MjY5MjIyNjIxNU1OMDsmHTkxRkZEMB05MmRHVnpkR1owcW9BZnVxV3pRUXRTbDZVRmJaWU9HSFdwOTgrd3FQRTl0TTQ9"],
+      "client_info": {
+          "name": "Postman",
+          "version": "3.6.4",
+          "id": "8866a527-8da1-4ac9-b48b-b2b88f692a29",
+          "token": "6312020b-4cd4-4fac-9217-f4499fa9c624"
+      }
+  }')
+
+  if [ $? -ne 0 ]; then
+      log_error "Не удалось выполнить запрос к API"
+      exit 1
+  fi
+
+  log_success "Запрос успешно выполнен"
+  log_info "Статус HTTP: 200"
+
+  echo ""
+  log_info "Полученный ответ от API:"
+  echo "$response"
+  echo ""
+
+
+  extract_parameters "$response"
+
+  analyze_results
 }
 
 
@@ -533,7 +742,6 @@ main() {
     echo "Работа с API ТСП ИОТ"
     echo "==================================="
 
-
     echo "Отсылаем стандартные данные для настроек ЛМ ЧЗ, ГИС МТ"
     export COMPATIBILITY_MODE="false"
     export ALLOW_REMOTE_CONNECTION="true"
@@ -542,8 +750,6 @@ main() {
     export LM_CZ_LOGIN="admin"
     export LM_CZ_PASSWORD="admin"
 
-
-
     log_info "Получение списка ККТ..."
     # 1. Получаем список ККТ
     if ! get_dkkt_list; then
@@ -551,12 +757,10 @@ main() {
         return 1
     fi
 
-
     # 2. Проверяем, что смена открыта на кассе, если нет - alert
     if ! check_shift_state; then
         return 1
     fi
-
 
     # 3. Создаём инстанс tspiot
     if ! manage_tspiot; then
@@ -580,15 +784,26 @@ main() {
     fi
 
     if ! setupGismtAddress; then
-      log_error "Ошибка на этапе подключения к экземпляру локального модуля для ЛМ ЧЗ"
-      exit 1
+      log_error "Ошибка на этапе подключения к экземпляру локального модуля для ЛМ ЧЗ через API"
+      log_error "Проверяем наличие ГИСМТ адреса в конфигурационном файле"
+
+
+    #TODO возможно улучшить в версии v2
+      if ! check_gismt_config; then
+        log_info "Пока непонятно что с этим делать"
+      fi
     fi
 
+    if ! check_mark; then
+      log_error "Проверка марки прошла проблемно"
+      exit 1
+    fi
     echo "==================================="
     log_success "Все операции выполнены успешно!"
     echo "==================================="
     return 0
 }
+
 
 # Запуск основной функции
 main "$@"

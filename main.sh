@@ -247,12 +247,26 @@ execute_esm_install_script() {
       fi
 }
 
+cash_sleep_waiting() {
+  local CASH_STARTUP_TIME=120
+  echo -n "Ожидание запуска кассы... "
+  for i in $(seq 1 $CASH_STARTUP_TIME); do
+      sleep 1
+
+      # Каждые 10 секунд обновляем прогресс
+      if (( i % 10 == 0 )); then
+          percent=$(( i * 100 / CASH_STARTUP_TIME ))
+          echo -ne "\\rОжидание запуска кассы... ${percent}%"
+      fi
+  done
+  echo -e "\\rОжидание запуска кассы... 100% ✓"
+}
 
 main() {
     log_info "=== Развертывание ESM на TinyCore Linux ==="
     log_info "Сервер: $TINYCORE_USERNAME@$TINYCORE_SERVER_IP"
     log_info "==========================================="
-    local CASH_STARTUP_TIME=120
+
     # Проверка подключения к серверу
     if sshpass -p "$PASSWORD" ssh $SSH_OPTIONS -o ConnectTimeout=5 \
                "$TINYCORE_USERNAME@$TINYCORE_SERVER_IP" "exit"; then
@@ -273,38 +287,10 @@ main() {
     fi
 
     if wait_for_server_to_reboot; then
-        log_info "Ждём старта кассового ПО, хардкод -120"
-#        sleep $CASH_STARTUP_TIME
-#
-#        echo -n "["
-#        for i in $(seq 1 $CASH_STARTUP_TIME); do
-#            sleep 1
-#            if (( i % 10 == 0 )); then
-#                echo -n "#"
-#            fi
-#        done
-#        echo "]"
-
-        echo -n "["
-            for i in $(seq 1 $CASH_STARTUP_TIME); do
-                sleep 1
-
-                # Каждые 10 секунд обновляем прогресс
-                if (( i % 10 == 0 )); then
-                    # Считаем проценты
-                    percent=$(( i * 100 / CASH_STARTUP_TIME ))
-                    # Очищаем строку и выводим прогресс
-                    echo -ne "\\r[$i/$CASH_STARTUP_TIME] ["
-                    for ((j=0; j<percent/2; j++)); do echo -n "#"; done
-                    for ((j=percent/2; j<50; j++)); do echo -n "."; done
-                    echo -n "] $percent%"
-                fi
-            done
-            echo -e "\\r[$CASH_STARTUP_TIME/$CASH_STARTUP_TIME] [##################################################] 100% ✓"
-
-
+        log_info "Ждём старта кассового ПО, ожидание поставлено на 120 секунд"
+        cash_sleep_waiting
+        echo -e "\\r[$CASH_STARTUP_TIME/$CASH_STARTUP_TIME] [##################################################] 100% ✓"
         log_success "Ожидание завершено, начинаю отправку скрипта..."
-        echo "Отправляем скрипт на сервер"
         sh send_esm_script.sh
         echo "Запускаем скрипт на сервер"
         execute_esm_install_script
@@ -312,7 +298,6 @@ main() {
         log_error "Не удалось дождаться перезагрузки сервера"
         exit 1
     fi
-
 }
 
 main
