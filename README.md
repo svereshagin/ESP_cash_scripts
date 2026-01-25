@@ -1,6 +1,4 @@
-# API CIS - SetRetail 10 Linux TinyCore
-
-## Автоматизация развертывания TSPIOT на TinyCore Linux
+# Автоматизация развертывания TSPIOT на TinyCore Linux
 
 Полное решение для автоматической установки и настройки TSPIOT на дистрибутиве TinyCore Linux с логгированием и обработкой ошибок.
 
