@@ -43,13 +43,23 @@ cd ESP_cash_scripts
 
 ### 2. Настройка конфигурации
 
-Отредактируйте файл `main.sh` и настройте параметры подключения:
 
+# Отредактируйте файл `main.sh` и настройте параметры подключения:
 ```bash
-# Открыть файл для редактирования
-nano main.sh
-
-# Найти и изменить следующие параметры:
+  nano main.sh
+```
+# Найти и заменить следующие строки
+```
+TINYCORE_SERVER_IP="10.9.130.187"
+TINYCORE_USERNAME="tc"
+PASSWORD="324012"
+```
+# Открыть файл для установка ESM
+```shell
+  nano install_esm_tinycore.sh
+```
+# Найти и изменить следующие параметры(в main функции):
+```
 export COMPATIBILITY_MODE="false"
 export ALLOW_REMOTE_CONNECTION="true"
 export LM_CZ_ADDRESS="10.9.130.12"      # IP-адрес ЛМ ЧЗ

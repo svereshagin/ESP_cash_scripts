@@ -1,5 +1,12 @@
 #!/bin/bash
 
+#Configuration
+#need to have ssh-pass to connect to the server
+#brew install hudochenkov/sshpass/sshpass for macos
+TINYCORE_SERVER_IP="10.9.130.187"
+TINYCORE_USERNAME="tc"
+PASSWORD="324012"
+
 # Цвета для логов
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -30,12 +37,7 @@ debug_log() {
     fi
 }
 
-#Configuration
-#need to have ssh-pass to connect to the server
-#brew install hudochenkov/sshpass/sshpass for macos
-TINYCORE_SERVER_IP="10.9.130.187"
-TINYCORE_USERNAME="tc"
-PASSWORD="324012"
+
 pattern="tinycore8.run"
 
 SSH_OPTIONS="-o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa"
