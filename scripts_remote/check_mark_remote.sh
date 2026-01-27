@@ -8,7 +8,6 @@ PASSWORD="324012"
 echo "Запуск проверки марки на удаленном сервере..."
 echo ""
 
-# Все команды в одной строке для простоты
 sshpass -p "$PASSWORD" ssh $SSH_OPTIONS "$TINYCORE_USERNAME@$TINYCORE_SERVER_IP" "
 echo 'Выполняю проверку марки...'
 RESPONSE=\$(curl -k -s -X POST https://localhost:51401/api/v1/codes/check --header 'Content-Type: application/json' --data '{\"codes\":[\"MDEwNjI3MTU4MjY5MjIyNjIxNU1OMDsmHTkxRkZEMB05MmRHVnpkR1owcW9BZnVxV3pRUXRTbDZVRmJaWU9HSFdwOTgrd3FQRTl0TTQ9\"],\"client_info\":{\"name\":\"Postman\",\"version\":\"3.6.4\",\"id\":\"8866a527-8da1-4ac9-b48b-b2b88f692a29\",\"token\":\"6312020b-4cd4-4fac-9217-f4499fa9c624\"}}')

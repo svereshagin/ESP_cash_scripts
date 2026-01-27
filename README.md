@@ -185,7 +185,7 @@ qa_tasks/
 
 ```bash
 # Проверка марки на сервере
-sh qa_tasks/check_mark.sh
+sh qa_tasks/check_mark_remote.sh
 ```
 
 

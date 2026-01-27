@@ -10,7 +10,7 @@ GISMT_ADDRESS=""
 COMPATIBILITY_MODE=""
 ALLOW_REMOTE_CONNECTION=""
 
-
+INTERACTIVE_MODE=false
 # Конфигурация API
 API_BASE='http://127.0.0.1:51077'
 API_VERSION='api/v1'
@@ -345,37 +345,89 @@ manage_tspiot() {
 register_tspiot() {
     log_info "Регистрация ЭСМ..."
 
+    local max_retries=4
+    local timeout=20
+    local retry_count=0
+
     local url="$API_BASE/$API_VERSION/tspiot"
     local data="{\"id\": \"$KKT_ID\", \"kktSerial\": \"$KKT_SERIAL\", \"fnSerial\": \"$FN_SERIAL\", \"kktInn\": \"$KKT_INN\"}"
 
     log_info "URL: PUT $url"
     log_info "Данные: $data"
 
-    response=$(curl -sS -w "\n%{http_code}" \
-        --location \
-        --request PUT "$url" \
-        --header 'Content-Type: application/json' \
-        --data "$data")
+    while [ $retry_count -lt $max_retries ]; do
+        retry_count=$((retry_count + 1))
 
-    local http_code=$(echo "$response" | tail -n1)
-    local body=$(echo "$response" | sed '$d')
+        log_info "Попытка $retry_count из $max_retries"
 
-    log_info "HTTP код: $http_code"
-    log_info "Ответ: $body"
+        # ВАЖНО: Добавляем timeout перед curl
+        response=$(curl -sS -w "\n%{http_code}" \
+                --location \
+                --request PUT "$url" \
+                --header 'Content-Type: application/json' \
+                --data "$data" \
+                --connect-timeout 10 \
+                --max-time 20 \
+                --retry 0 2>&1)  # Перенаправляем stderr в stdout
 
-    # Проверяем успешный HTTP код
-    if [ "$http_code" -eq 200 ] || [ "$http_code" -eq 201 ]; then
-        # Извлекаем tspiotId
-        local tspiot_id=$(echo "$body" | sed -n 's/.*"tspiotId":"\([^"]*\)".*/\1/p')
+        local curl_exit_code=$?
 
-        # Проверяем, что tspiotId не пустой
-        if [ -n "$tspiot_id" ]; then
-            log_success "Экземпляр ТСП ИОТ успешно создан, ID: $tspiot_id"
-            return 0
+        log_warning "[DEBUG] curl exit code: $curl_exit_code"
+
+        # Проверяем таймаут команды timeout (124) или curl (28)
+        if [ $curl_exit_code -eq 124 ] || [ $curl_exit_code -eq 28 ]; then
+            log_warning "Вышло время на подключение к серверу для получения tspiot_id ($timeout сек) при попытке $retry_count/$max_retries"
+            if [ $retry_count -lt $max_retries ]; then
+                sleep 2
+            fi
+            continue
+        elif [ $curl_exit_code -ne 0 ]; then
+            log_warning "Ошибка curl (код: $curl_exit_code) при попытке $retry_count"
+            if [ $retry_count -lt $max_retries ]; then
+                sleep 2
+            fi
+            continue
         fi
+
+        # Получаем HTTP код и тело ответа
+        local http_code=$(echo "$response" | tail -n1)
+        local body=$(echo "$response" | sed '$d')
+
+        log_info "HTTP код: $http_code"
+        log_info "Ответ: $body"
+
+        # Проверяем успешный HTTP код
+        if [ "$http_code" -eq 200 ] || [ "$http_code" -eq 201 ]; then
+            # Извлекаем tspiotId
+            local tspiot_id=$(echo "$body" | sed -n 's/.*"tspiotId":"\([^"]*\)".*/\1/p')
+
+            # Проверяем, что tspiotId не пустой
+            if [ -n "$tspiot_id" ]; then
+                log_success "Экземпляр ТСП ИОТ успешно создан, ID: $tspiot_id"
+                return 0
+            else
+                log_warning "Успешный HTTP код, но tspiotId не найден в ответе"
+                if [ $retry_count -lt $max_retries ]; then
+                    sleep 2
+                    continue
+                fi
+            fi
+        else
+            log_warning "Неуспешный HTTP код: $http_code"
+            if [ $retry_count -lt $max_retries ]; then
+                sleep 2
+                continue
+            fi
+        fi
+    done
+
+    log_error "Ошибка регистрации tspiot_id после $max_retries попыток"
+    if [ -n "$http_code" ]; then
+        log_error "Последний HTTP код: $http_code"
     fi
-    # Если дошли сюда - ошибка
-    log_error "Ошибка регистрации ЭСМ"
+    if [ -n "$body" ]; then
+        log_error "Последний ответ: $body"
+    fi
     return 1
 }
 
@@ -508,10 +560,85 @@ setupGismtAddress() {
 
     local url="$API_BASE/$API_VERSION/settings/$KKT_ID"
 
-    # Используем предустановленные значения или стандартные
-    local gismt_address="${GISMT_ADDRESS:-https://tsp-test.crpt.ru:19101}"
-    local compatibility_mode="${COMPATIBILITY_MODE:-false}"
-    local allow_remote="${ALLOW_REMOTE_CONNECTION:-true}"
+    local gismt_address=""
+    local compatibility_mode=""
+    local allow_remote=""
+
+    while true; do
+        read -p "Введите адрес для GISMT (дефолтный: https://ts-reg.crpt.ru:19100 ) : " gismt_address
+        if [ -z "$gismt_address" ]; then
+            log_error "Адрес не может быть пустым!"
+            continue
+        fi
+
+        # Используем case для проверки начала строки (совместимо с sh)
+        case "$gismt_address" in
+            https://*)
+                # Удаляем протокол для проверки остальной части
+                address_without_protocol="${gismt_address#https://}"
+
+                # Проверяем, что после https:// есть что-то
+                if [ -z "$address_without_protocol" ]; then
+                    log_error "После https:// должен быть указан адрес!"
+                    continue
+                fi
+
+                # Проверяем формат адреса (домен или IP) с помощью expr (совместимо с sh)
+                if expr "$address_without_protocol" : '^\([a-zA-Z0-9.-]\+\|[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\)\(:[0-9]\+\)\?\(/.*\)\?$' >/dev/null; then
+                    log_info "Адрес GISMT корректен: $gismt_address"
+                    break
+                else
+                    log_error "Неверный формат адреса после https://!"
+                    log_error "Пример правильного формата: https://tsp-test.crpt.ru:19101"
+                fi
+                ;;
+            *)
+                log_error "Адрес должен начинаться с https://"
+                ;;
+        esac
+    done
+
+    while true; do
+        read -p "Режим совместимости? (true/false) [false]: " compatibility_mode
+        compatibility_mode=${compatibility_mode:-false}
+        compatibility_mode=$(echo "$compatibility_mode" | tr '[:upper:]' '[:lower:]')
+
+        # Используем case вместо [[ =~ ]]
+        case "$compatibility_mode" in
+            true|yes|y|1)
+                compatibility_mode="true"
+                break
+                ;;
+            false|no|n|0)
+                compatibility_mode="false"
+                break
+                ;;
+            *)
+                log_error "Введите true или false"
+                ;;
+        esac
+    done
+
+    while true; do
+        read -p "Разрешить удаленные подключения? (true/false) [true]: " allow_remote
+        allow_remote=${allow_remote:-true}
+        allow_remote=$(echo "$allow_remote" | tr '[:upper:]' '[:lower:]')
+
+        # Используем case вместо [[ =~ ]]
+        case "$allow_remote" in
+            true|yes|y|1)
+                allow_remote="true"
+                break
+                ;;
+            false|no|n|0)
+                allow_remote="false"
+                break
+                ;;
+            *)
+                log_error "Введите true или false"
+                ;;
+        esac
+    done
 
     log_info "Параметры ГИС МТ:"
     log_info "  Режим совместимости: $compatibility_mode"
@@ -648,6 +775,7 @@ extract_parameters() {
     log_info "  - found: $found"
     log_info "  - valid: $valid"
 }
+
 #МАРКА
 analyze_results() {
     echo ""
@@ -735,21 +863,210 @@ check_mark() {
   analyze_results
 }
 
+show_help() {
+    cat <<EOF
+Конфигуратор драйвера ESM
+Версия: 2.0
+
+Использование: $0 [ОПЦИИ]
+
+Опции:
+  --default                     Cтандартная установка в интерактивном режиме, будет затребован ввод значений в необходимых
+                                для этого местах. Параметры, указанные после --default, перезапишут соответствующие значения по умолчанию.
+
+  --LM_CZ_ADDRESS АДРЕС         Адрес сервера LM_CZ (по умолчанию: localhost)
+  --LM_CZ_PORT ПОРТ             Порт сервера LM_CZ (по умолчанию: 50063)
+  --LM_CZ_LOGIN ЛОГИН           Логин для подключения к LM_CZ (по умолчанию: admin)
+  --LM_CZ_PASSWORD ПАРОЛЬ       Пароль для подключения к LM_CZ (по умолчанию: admin)
+  --GISMT_ADDRESS АДРЕС         Адрес сервера GISMT (по умолчанию: https://ts-reg.crpt.ru:19100)
+  --COMPATIBILITY_MODE РЕЖИМ    Режим совместимости (по умолчанию: false)
+  --ALLOW_REMOTE_CONNECTION     Разрешить удаленные подключения (по умолчанию: true)
+  --help, -h                    Показать эту справку
+
+Примеры:
+  $0 --default
+  $0 --LM_CZ_ADDRESS 192.168.1.100 --LM_CZ_LOGIN admin --LM_CZ_PASSWORD admin
+  $0 --default --ALLOW_REMOTE_CONNECTION false
+  $0 --LM_CZ_ADDRESS 10.0.0.1 --GISMT_ADDRESS https://ts-reg.crpt.ru:19100 --COMPATIBILITY_MODE true
+  $0 --LM_CZ_ADDRESS localhost --LM_CZ_PORT 50063 --COMPATIBILITY_MODE false
+
+Примечания:
+  - Значения для COMPATIBILITY_MODE и ALLOW_REMOTE_CONNECTION могут быть true или false
+EOF
+    exit 0
+}
+
+parse_arguments() {
+    # Если нет аргументов, показываем справку
+    if [ $# -eq 0 ]; then
+        echo "[INFO] Аргументы не указаны. Показываю справку..."
+        show_help
+    fi
+
+    while [ $# -gt 0 ]; do
+        case $1 in
+            --default)
+                if [ "$INTERACTIVE_MODE" = true ]; then
+                    echo "[WARNING] Флаг --default уже был указан ранее"
+                fi
+                INTERACTIVE_MODE=true
+                echo "[DEBUG] Обнаружен флаг: --default"
+                shift
+                ;;
+            --LM_CZ_ADDRESS)
+                if [ -z "$2" ] || [ "$(echo "$2" | cut -c1-2)" = "--" ]; then
+                    echo "[ERROR] Флаг --LM_CZ_ADDRESS требует аргумент"
+                    exit 1
+                fi
+                LM_CZ_ADDRESS="$2"
+                echo "[DEBUG] Обнаружен флаг: --LM_CZ_ADDRESS со значением: $2"
+                shift 2
+                ;;
+            --LM_CZ_PORT)
+                if [ -z "$2" ] || [ "$(echo "$2" | cut -c1-2)" = "--" ]; then
+                    echo "[ERROR] Флаг --LM_CZ_PORT требует аргумент"
+                    exit 1
+                fi
+                # Проверяем что это число с помощью expr
+                if expr "$2" : '^[0-9][0-9]*$' >/dev/null && \
+                   [ "$2" -ge 1 ] && [ "$2" -le 65535 ]; then
+                    LM_CZ_PORT="$2"
+                    echo "[DEBUG] Обнаружен флаг: --LM_CZ_PORT со значением: $2"
+                else
+                    echo "[ERROR] Флаг --LM_CZ_PORT требует числовой аргумент от 1 до 65535"
+                    exit 1
+                fi
+                shift 2
+                ;;
+            --LM_CZ_LOGIN)
+                if [ -z "$2" ] || [ "$(echo "$2" | cut -c1-2)" = "--" ]; then
+                    echo "[ERROR] Флаг --LM_CZ_LOGIN требует аргумент"
+                    exit 1
+                fi
+                LM_CZ_LOGIN="$2"
+                echo "[DEBUG] Обнаружен флаг: --LM_CZ_LOGIN со значением: $2"
+                shift 2
+                ;;
+            --LM_CZ_PASSWORD)
+                if [ -z "$2" ] || [ "$(echo "$2" | cut -c1-2)" = "--" ]; then
+                    echo "[ERROR] Флаг --LM_CZ_PASSWORD требует аргумент"
+                    exit 1
+                fi
+                LM_CZ_PASSWORD="$2"
+                echo "[DEBUG] Обнаружен флаг: --LM_CZ_PASSWORD (значение скрыто)"
+                shift 2
+                ;;
+            --GISMT_ADDRESS)
+                if [ -z "$2" ] || [ "$(echo "$2" | cut -c1-2)" = "--" ]; then
+                    echo "[ERROR] Флаг --GISMT_ADDRESS требует аргумент"
+                    exit 1
+                fi
+                GISMT_ADDRESS="$2"
+                echo "[DEBUG] Обнаружен флаг: --GISMT_ADDRESS со значением: $2"
+                shift 2
+                ;;
+            --COMPATIBILITY_MODE)
+                if [ -z "$2" ] || [ "$(echo "$2" | cut -c1-2)" = "--" ]; then
+                    echo "[ERROR] Флаг --COMPATIBILITY_MODE требует аргумент"
+                    exit 1
+                fi
+                # Используем case для проверки true/false
+                case "$2" in
+                    true|false)
+                        COMPATIBILITY_MODE="$2"
+                        echo "[DEBUG] Обнаружен флаг: --COMPATIBILITY_MODE со значением: $2"
+                        ;;
+                    *)
+                        echo "[ERROR] Флаг --COMPATIBILITY_MODE требует 'true' или 'false'"
+                        exit 1
+                        ;;
+                esac
+                shift 2
+                ;;
+            --ALLOW_REMOTE_CONNECTION)
+                if [ -z "$2" ] || [ "$(echo "$2" | cut -c1-2)" = "--" ]; then
+                    echo "[ERROR] Флаг --ALLOW_REMOTE_CONNECTION требует аргумент"
+                    exit 1
+                fi
+                # Используем case для проверки true/false
+                case "$2" in
+                    true|false)
+                        ALLOW_REMOTE_CONNECTION="$2"
+                        echo "[DEBUG] Обнаружен флаг: --ALLOW_REMOTE_CONNECTION со значением: $2"
+                        ;;
+                    *)
+                        echo "[ERROR] Флаг --ALLOW_REMOTE_CONNECTION требует 'true' или 'false'"
+                        exit 1
+                        ;;
+                esac
+                shift 2
+                ;;
+            --help|-h)
+                echo "[DEBUG] Обнаружен флаг: --help"
+                show_help
+                ;;
+            --*)
+                echo "[ERROR] Неизвестный флаг: $1"
+                echo "Используйте --help для получения списка доступных флагов"
+                exit 1
+                ;;
+            -*)
+                echo "[ERROR] Неизвестная короткая опция: $1"
+                echo "Используйте --help для получения списка доступных флагов"
+                exit 1
+                ;;
+            *)
+                echo "[ERROR] Неожиданный аргумент: $1"
+                echo "Все аргументы должны начинаться с --"
+                echo "Используйте --help для получения справки"
+                exit 1
+                ;;
+        esac
+    done
+}
+
+echo_configuration() {
+      if [ "$INTERACTIVE_MODE" = true ]; then
+        log_info "Активирован интерактивный режим"
+      fi
+
+      if [ -n "$COMPATIBILITY_MODE" ]; then
+          log_info "Режим совместимости установлен: $COMPATIBILITY_MODE"
+      fi
+
+      if [ -n "$LM_CZ_ADDRESS" ]; then
+          log_info "Адрес LM_CZ: $LM_CZ_ADDRESS"
+      fi
+
+      if [ -n "$LM_CZ_PORT" ]; then
+          log_info "Порт LM_CZ: $LM_CZ_PORT"
+      fi
+
+      if [ -n "$LM_CZ_LOGIN" ]; then
+          log_info "Логин LM_CZ: $LM_CZ_LOGIN"
+      fi
+
+      if [ -n "$LM_CZ_PASSWORD" ]; then
+          log_info "Пароль LM_CZ: [СКРЫТО]"
+      fi
+
+      if [ -n "$GISMT_ADDRESS" ]; then
+          log_info "Адрес GISMT: $GISMT_ADDRESS"
+      fi
+
+      if [ -n "$ALLOW_REMOTE_CONNECTION" ]; then
+          log_info "Разрешение удаленных подключений: $ALLOW_REMOTE_CONNECTION"
+      fi
+}
 
 
 main() {
     echo "==================================="
     echo "Работа с API ТСП ИОТ"
     echo "==================================="
-
-    echo "Отсылаем стандартные данные для настроек ЛМ ЧЗ, ГИС МТ"
-    export COMPATIBILITY_MODE="false"
-    export ALLOW_REMOTE_CONNECTION="true"
-    export LM_CZ_ADDRESS="10.9.130.12"
-    export LM_CZ_PORT="50063"
-    export LM_CZ_LOGIN="admin"
-    export LM_CZ_PASSWORD="admin"
-
+    set -- "$@"
+    parse_arguments "$@"
+    echo_configuration
     log_info "Получение списка ККТ..."
     # 1. Получаем список ККТ
     if ! get_dkkt_list; then
@@ -764,47 +1081,46 @@ main() {
 
     # 3. Создаём инстанс tspiot
     if ! manage_tspiot; then
-      log_error "==================================="
-      log_error "При создании экзмепляра tspiot возникла ошибка (код: $?)"
-      log_error "Обратитесь к инструкции по развёртыванию или свяжитесь с поддержкой tspiot"
-      log_error "==================================="
-      exit 1
+        log_error "==================================="
+        log_error "При создании экзмепляра tspiot возникла ошибка (код: $?)"
+        log_error "Обратитесь к инструкции по развёртыванию или свяжитесь с поддержкой tspiot"
+        log_error "==================================="
+        exit 1
     fi
 
     if ! register_tspiot; then
-      log_error "Ошибка Регистрации (Неверные адреса для регистрации / проблемы с сетью / проблема с лицензией) : tspiotId пуст после успешного создания"
-      exit 1
+        log_error "Ошибка Регистрации (Неверные адреса для регистрации / проблемы с сетью / проблема с лицензией) : tspiotId пуст после успешного создания"
+        exit 1
     fi
 
     if ! configure_lm_cz; then
-      log_error "Ошибка на этапе подключения к экземпляру локального модуля для ЛМ ЧЗ"
-      log_error "Проверьте, что сервер имеет доступ к серверу, где расположен локальный модуль"
-      log_error "Если у вас не получается решить проблему - дайте логи работы controlmodule и логи с сервера из папки локального модуля lmcontroller"
-      exit 1
+        log_error "Ошибка на этапе подключения к экземпляру локального модуля для ЛМ ЧЗ"
+        log_error "Проверьте, что сервер имеет доступ к серверу, где расположен локальный модуль"
+        log_error "Если у вас не получается решить проблему - дайте логи работы controlmodule и логи с сервера из папки локального модуля lmcontroller"
+        exit 1
     fi
 
     if ! setupGismtAddress; then
-      log_error "Ошибка на этапе подключения к экземпляру локального модуля для ЛМ ЧЗ через API"
-      log_error "Проверяем наличие ГИСМТ адреса в конфигурационном файле"
+        log_error "Ошибка на этапе подключения к экземпляру локального модуля для ЛМ ЧЗ через API"
+        log_error "Проверяем наличие ГИСМТ адреса в конфигурационном файле"
 
-
-    #TODO возможно улучшить в версии v2
-      if ! check_gismt_config; then
-        log_info "Пока непонятно что с этим делать"
-      fi
+        # TODO возможно улучшить в версии v2
+        if ! check_gismt_config; then
+            log_info "Пока непонятно что с этим делать"
+        fi
     fi
 
     if ! check_mark; then
-      log_error "Проверка марки прошла проблемно"
-      exit 1
+        log_error "Проверка марки прошла проблемно"
+        exit 1
     fi
+
     echo "==================================="
     log_success "Все операции выполнены успешно!"
     echo "==================================="
     return 0
 }
 
-
 # Запуск основной функции
 main "$@"
-exit $?
+exit 0

@@ -1,11 +1,9 @@
 #!/bin/bash
 
+
 #Configuration
 #need to have ssh-pass to connect to the server
 #brew install hudochenkov/sshpass/sshpass for macos
-TINYCORE_SERVER_IP="10.9.130.187"
-TINYCORE_USERNAME="tc"
-PASSWORD="324012"
 
 # Цвета для логов
 RED='\033[0;31m'
@@ -212,6 +210,34 @@ wait_for_server_to_reboot() {
 }
 
 
+check_env_file() {
+  if [ -z "$LM_CZ_ADDRESS" ] || [ -z "$LM_CZ_PORT" ] || \
+         [ -z "$LM_CZ_LOGIN" ] || [ -z "$LM_CZ_PASSWORD" ] || \
+         [ -z "$GISMT_ADDRESS" ] || [ -z "$COMPATIBILITY_MODE" ] || \
+         [ -z "$ALLOW_REMOTE_CONNECTION" ]; then
+          log_error "Не все обязательные параметры установлены!"
+          log_error "Проверьте следующие переменные:"
+          log_error "  LM_CZ_ADDRESS=$LM_CZ_ADDRESS"
+          log_error "  LM_CZ_PORT=$LM_CZ_PORT"
+          log_error "  LM_CZ_LOGIN=$LM_CZ_LOGIN"
+          log_error "  LM_CZ_PASSWORD=$LM_CZ_PASSWORD"
+          log_error "  GISMT_ADDRESS=$GISMT_ADDRESS"
+          log_error "  COMPATIBILITY_MODE=$COMPATIBILITY_MODE"
+          log_error "  ALLOW_REMOTE_CONNECTION=$ALLOW_REMOTE_CONNECTION"
+          exit 1
+      fi
+
+      log_info "Подготовка запуска скрипта на TinyCore..."
+      log_info "Параметры:"
+      log_info "  LM_CZ_ADDRESS: $LM_CZ_ADDRESS"
+      log_info "  LM_CZ_PORT: $LM_CZ_PORT"
+      log_info "  LM_CZ_LOGIN: $LM_CZ_LOGIN"
+      log_info "  LM_CZ_PASSWORD: $LM_CZ_PASSWORD"
+      log_info "  GISMT_ADDRESS: $GISMT_ADDRESS"
+      log_info "  COMPATIBILITY_MODE: $COMPATIBILITY_MODE"
+      log_info "  ALLOW_REMOTE_CONNECTION: $ALLOW_REMOTE_CONNECTION"
+}
+
 execute_esm_install_script() {
   script_file="install_esm_tinycore.sh"
   local remote_cmd="
@@ -226,8 +252,25 @@ execute_esm_install_script() {
           fi
 
           if [ -f \"$script_file\" ]; then
-              echo 'Скрипт найден, выполняю...'
-              ./\"$script_file\"
+              echo 'Скрипт найден, выполняю с параметрами...'
+              echo 'Параметры запуска:'
+              echo '  --LM_CZ_ADDRESS \"$LM_CZ_ADDRESS\"'
+              echo '  --LM_CZ_PORT \"$LM_CZ_PORT\"'
+              echo '  --LM_CZ_LOGIN \"$LM_CZ_LOGIN\"'
+              echo '  --LM_CZ_PASSWORD \"********\"'
+              echo '  --GISMT_ADDRESS \"$GISMT_ADDRESS\"'
+              echo '  --COMPATIBILITY_MODE \"$COMPATIBILITY_MODE\"'
+              echo '  --ALLOW_REMOTE_CONNECTION \"$ALLOW_REMOTE_CONNECTION\"'
+
+              ./\"$script_file\" \\
+                --LM_CZ_ADDRESS \"$LM_CZ_ADDRESS\" \\
+                --LM_CZ_PORT \"$LM_CZ_PORT\" \\
+                --LM_CZ_LOGIN \"$LM_CZ_LOGIN\" \\
+                --LM_CZ_PASSWORD \"$LM_CZ_PASSWORD\" \\
+                --GISMT_ADDRESS \"$GISMT_ADDRESS\" \\
+                --COMPATIBILITY_MODE \"$COMPATIBILITY_MODE\" \\
+                --ALLOW_REMOTE_CONNECTION \"$ALLOW_REMOTE_CONNECTION\"
+
               EXIT_CODE=\$?
               echo 'Скрипт завершился с кодом: '\$EXIT_CODE
               exit \$EXIT_CODE
@@ -264,10 +307,33 @@ cash_sleep_waiting() {
   echo -e "\\rОжидание запуска кассы... 100% ✓"
 }
 
+read_env_file() {
+     if [ -f ".env" ]; then
+          log_info "Загружаю переменные из .env файла"
+          # Читаем файл построчно
+          while IFS= read -r line || [ -n "$line" ]; do
+              case $line in
+                  \#*|"") continue ;;
+              esac
+              # Удаляем пробелы в начале/конце
+              line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              # Экспортируем переменную
+              export "$line"
+          done < .env
+          log_success "Переменные из .env загружены"
+      else
+          log_error "Файл .env не найден!"
+          exit 1
+      fi
+}
+
 main() {
     log_info "=== Развертывание ESM на TinyCore Linux ==="
     log_info "Сервер: $TINYCORE_USERNAME@$TINYCORE_SERVER_IP"
     log_info "==========================================="
+    read_env_file
+    check_env_file
+
 
     # Проверка подключения к серверу
     if sshpass -p "$PASSWORD" ssh $SSH_OPTIONS -o ConnectTimeout=5 \
@@ -275,6 +341,8 @@ main() {
         log_success "Подключение успешно установлено, сервер доступен"
     else
         log_error "Не удалось подключиться к серверу"
+        log_info "username: $TINYCORE_USERNAME"
+        log_info "password: $TINYCORE_SERVER_IP"
         exit 1
     fi
 
