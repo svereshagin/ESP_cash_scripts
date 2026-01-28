@@ -100,7 +100,7 @@ parse_kkt_response() {
     debug_log "Используем sed для парсинга JSON"
     # Fallback на sed если jq не установлен
     KKT_SERIAL=$(echo "$response" | sed -n 's/.*"kktSerial":"\([^"]*\)".*/\1/p')
-    FN_SERIAL=$(echo "$response" | sed -n 's/.*"fnSerial":"\([^"]*\)".*/\1/p')
+    FN_SERIAKKT_ID=""L=$(echo "$response" | sed -n 's/.*"fnSerial":"\([^"]*\)".*/\1/p')
     KKT_INN=$(echo "$response" | sed -n 's/.*"kktInn":"\([^"]*\)".*/\1/p')
     KKT_RNM=$(echo "$response" | sed -n 's/.*"kktRnm":"\([^"]*\)".*/\1/p')
     MODEL_NAME=$(echo "$response" | sed -n 's/.*"modelName":"\([^"]*\)".*/\1/p')
@@ -234,26 +234,6 @@ create_tspiot_instance() {
 }
 
 
-# Настройка GISMT
-configure_gismt() {
-    log_info "Настройка GISMT..."
-
-    local data='{
-        "compatibilityMode": false,
-        "allowRemoteConnection": true,
-        "gismtAddress": "https://194.0.209.194:19101"
-    }'
-    local response
-
-    if ! response=$(call_api "PUT" "settings/$KKT_ID" "$data"); then
-        log_error "Ошибка при настройке GISMT"
-        return 1
-    fi
-
-    log_success "GISMT настроен"
-    return 0
-}
-
 # Проверка статуса смены
 check_shift_state() {
     case "$SHIFT_STATE" in
@@ -312,6 +292,50 @@ start_tspiot_instance() {
         return 1
     fi
 }
+
+
+check_existance_in_config_tspiotid() {
+  log_info "Проверка наличия esmID в файле: $config_file"
+    local config_file="/etc/esp/esm/um/config_${KKT_ID}.yml"
+
+    # Проверяем существование файла
+    if [ ! -f "$config_file" ]; then
+        log_error "Файл конфигурации не найден: $config_file"
+        return 1
+    fi
+
+    # Ищем строку с esmID: используя grep
+    local esm_line=$(grep -E '^\s*esmID:' "$config_file" | head -1)
+
+    if [ -z "$esm_line" ]; then
+        log_error "Поле esmID не найдено в файле"
+        return 1
+    fi
+
+    # Извлекаем значение после двоеточия
+    # Убираем начальные пробелы и "esmID:"
+    local value=$(echo "$esm_line" | sed -n 's/^[[:space:]]*esmID:[[:space:]]*//p')
+
+    # Убираем кавычки если есть
+    value="${value%\"}"
+    value="${value#\"}"
+    value="${value%\'}"
+    value="${value#\'}"
+
+    # Убираем возможные комментарии в конце строки
+    value="${value%%#*}"  # Убираем все после #
+    value="${value%"${value##*[![:space:]]}"}"  # Убираем конечные пробелы
+
+    if [ -z "$value" ]; then
+        log_error "Поле esmID пустое"
+        return 1
+    fi
+
+    log_success "Поле esmID найдено: $value"
+    echo "$value"
+    return 0
+}
+
 
 
 manage_tspiot() {
@@ -403,7 +427,7 @@ register_tspiot() {
 
             # Проверяем, что tspiotId не пустой
             if [ -n "$tspiot_id" ]; then
-                log_success "Экземпляр ТСП ИОТ успешно создан, ID: $tspiot_id"
+                log_success "Экземпляр ТСПИОТ успешно создан, ID: $tspiot_id"
                 return 0
             else
                 log_warning "Успешный HTTP код, но tspiotId не найден в ответе"
@@ -427,6 +451,12 @@ register_tspiot() {
     fi
     if [ -n "$body" ]; then
         log_error "Последний ответ: $body"
+    fi
+
+    check_existance_in_config_tspiotid > /dev/null  #возврат значения функции
+    if [ $? -eq 0 ]; then
+        log_warning "Результат регистрации вернул ошибку, когда уже есть значение в esmID"
+        return 0
     fi
     return 1
 }
@@ -551,7 +581,7 @@ resolveGismtStatusResponse() {
 setupGismtAddress() {
     log_info "=== Настройка ГИС МТ ==="
 
-    #retry логика программы
+    # retry логика программы
     local max_attempts=6           # Максимум 6 попыток
     local attempt_timeout=30       # Таймаут одной попытки (сек)
     local total_timeout=300        # Общий таймаут 5 минут
@@ -563,83 +593,95 @@ setupGismtAddress() {
     local gismt_address=""
     local compatibility_mode=""
     local allow_remote=""
+    if [ -z "$GISMT_ADDRESS"]; then
+      log_info "Адрес GISMT не указан"    # Исправленный блок ввода адреса
+      while true; do
+          read -p "Введите адрес для GISMT (дефолтный: https://ts-reg.crpt.ru:19100) : " gismt_address
 
-    while true; do
-        read -p "Введите адрес для GISMT (дефолтный: https://ts-reg.crpt.ru:19100 ) : " gismt_address
-        if [ -z "$gismt_address" ]; then
-            log_error "Адрес не может быть пустым!"
-            continue
-        fi
+          # Проверка на пустую строку
+          if [ -z "$gismt_address" ]; then
+              log_error "Адрес не может быть пустым!"
+              continue
+          fi
 
-        # Используем case для проверки начала строки (совместимо с sh)
-        case "$gismt_address" in
-            https://*)
-                # Удаляем протокол для проверки остальной части
-                address_without_protocol="${gismt_address#https://}"
+          # Устанавливаем дефолтное значение если введена пустая строка
+          if [ -z "$gismt_address" ]; then
+              gismt_address="https://ts-reg.crpt.ru:19100"
+          fi
 
-                # Проверяем, что после https:// есть что-то
-                if [ -z "$address_without_protocol" ]; then
-                    log_error "После https:// должен быть указан адрес!"
-                    continue
-                fi
+          # Проверяем, начинается ли строка с https://
+          case "$gismt_address" in
+              https://*)
+                  # Извлекаем часть после протокола
+                  address_without_protocol="${gismt_address#https://}"
 
-                # Проверяем формат адреса (домен или IP) с помощью expr (совместимо с sh)
-                if expr "$address_without_protocol" : '^\([a-zA-Z0-9.-]\+\|[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\)\(:[0-9]\+\)\?\(/.*\)\?$' >/dev/null; then
-                    log_info "Адрес GISMT корректен: $gismt_address"
-                    break
-                else
-                    log_error "Неверный формат адреса после https://!"
-                    log_error "Пример правильного формата: https://tsp-test.crpt.ru:19101"
-                fi
-                ;;
-            *)
-                log_error "Адрес должен начинаться с https://"
-                ;;
-        esac
-    done
+                  # Проверяем, что после протокола что-то есть
+                  if [ -z "$address_without_protocol" ]; then
+                      log_error "После https:// должен быть указан адрес!"
+                      continue
+                  fi
 
-    while true; do
-        read -p "Режим совместимости? (true/false) [false]: " compatibility_mode
-        compatibility_mode=${compatibility_mode:-false}
-        compatibility_mode=$(echo "$compatibility_mode" | tr '[:upper:]' '[:lower:]')
+                  # Упрощенная проверка формата (без regex)
+                  if echo "$address_without_protocol" | grep -q -E '^([a-zA-Z0-9.-]+|[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})(:[0-9]+)?(/.*)?$'; then
+                      log_info "Адрес GISMT корректен: $gismt_address"
+                      break
+                  else
+                      log_error "Неверный формат адреса после https://!"
+                      log_error "Пример правильного формата: https://tsp-test.crpt.ru:19101"
+                  fi
+                  ;;
+              *)
+                  log_error "Адрес должен начинаться с https://"
+                  ;;
+          esac
+      done
+    fi
 
-        # Используем case вместо [[ =~ ]]
-        case "$compatibility_mode" in
-            true|yes|y|1)
-                compatibility_mode="true"
-                break
-                ;;
-            false|no|n|0)
-                compatibility_mode="false"
-                break
-                ;;
-            *)
-                log_error "Введите true или false"
-                ;;
-        esac
-    done
+   if [ -z "COMPATIBILITY_MODE"]; then
+      log_info "COMPATIBILITY_MODE не указан"    #
+      while true; do
+          read -p "Режим совместимости? (true/false) [false]: " compatibility_mode
+          compatibility_mode=${compatibility_mode:-false}
+          compatibility_mode=$(echo "$compatibility_mode" | tr '[:upper:]' '[:lower:]')
 
-    while true; do
-        read -p "Разрешить удаленные подключения? (true/false) [true]: " allow_remote
-        allow_remote=${allow_remote:-true}
-        allow_remote=$(echo "$allow_remote" | tr '[:upper:]' '[:lower:]')
+          case "$compatibility_mode" in
+              true|yes|y|1)
+                  compatibility_mode="true"
+                  break
+                  ;;
+              false|no|n|0)
+                  compatibility_mode="false"
+                  break
+                  ;;
+              *)
+                  log_error "Введите true или false"
+                  ;;
+          esac
+      done
+    fi
 
-        # Используем case вместо [[ =~ ]]
-        case "$allow_remote" in
-            true|yes|y|1)
-                allow_remote="true"
-                break
-                ;;
-            false|no|n|0)
-                allow_remote="false"
-                break
-                ;;
-            *)
-                log_error "Введите true или false"
-                ;;
-        esac
-    done
+    if [ -z "$ALLOW_REMOTE_CONNECTION"]; then
+        log_info "ALLOW_REMOTE_CONNECTION не указан"
+      while true; do
+          read -p "Разрешить удаленные подключения? (true/false) [true]: " allow_remote
+          allow_remote=${allow_remote:-true}
+          allow_remote=$(echo "$allow_remote" | tr '[:upper:]' '[:lower:]')
 
+          case "$allow_remote" in
+              true|yes|y|1)
+                  allow_remote="true"
+                  break
+                  ;;
+              false|no|n|0)
+                  allow_remote="false"
+                  break
+                  ;;
+              *)
+                  log_error "Введите true или false"
+                  ;;
+          esac
+      done
+    fi
     log_info "Параметры ГИС МТ:"
     log_info "  Режим совместимости: $compatibility_mode"
     log_info "  Удаленное подключение: $allow_remote"
@@ -650,92 +692,80 @@ setupGismtAddress() {
     log_info "Отправляю запрос..."
 
     for attempt in $(seq 1 $max_attempts); do
-      local current_time=$(date +%s)
-      local elapsed=$((current_time - start_time))
+        local current_time=$(date +%s)
+        local elapsed=$((current_time - start_time))
 
-      # Проверяем общий таймаут
-      if [ $elapsed -ge $total_timeout ]; then
-          log_error "Превышен общий лимит времени ($total_timeout секунд)"
-          return 1
-      fi
+        # Проверяем общий таймаут
+        if [ $elapsed -ge $total_timeout ]; then
+            log_error "Превышен общий лимит времени ($total_timeout секунд)"
+            return 1
+        fi
 
-      log_info "Попытка $attempt/$max_attempts (прошло ${elapsed}с из ${total_timeout}с)..."
-      response=$(curl -sS -w "\n%{http_code}\n%{time_total}" \
-        --location \
-        --request PUT "$url" \
-        --header 'Content-Type: application/json' \
-        --data "$data" \
-        --max-time $attempt_timeout \
-        --connect-timeout 15 \
-        --retry 0 \
-        2>&1)
-      log_info "Время выполнения curl: ${curl_time}с"
+        log_info "Попытка $attempt/$max_attempts (прошло ${elapsed}с из ${total_timeout}с)..."
 
+        response=$(curl -sS -w "\n%{http_code}" \
+            --location \
+            --request PUT "$url" \
+            --header 'Content-Type: application/json' \
+            --data "$data" \
+            --max-time $attempt_timeout \
+            --connect-timeout 15 \
+            --retry 0 \
+            2>&1)
 
-      local curl_time=$(echo "$response" | tail -n1)
-      response=$(echo "$response" | head -n -1)
-      log_info "Время выполнения curl: ${curl_time}с"
-      case $? in
-        0)
-        if resolveGismtStatusResponse; then
-            local total_elapsed=$(( $(date +%s) - start_time ))
-            log_success "Настройка ГИС МТ завершена успешно за ${total_elapsed} секунд"
-            return 0
-        else
-            local result_code=$?
-            if [ $result_code -eq 2 ]; then
-                # Нужно повторить
-                if [ $attempt -lt $max_attempts ]; then
-                    log_info "Повтор через ${retry_delay} секунд..."
-                    sleep $retry_delay
-                    # Увеличиваем задержку для следующей попытки (exponential backoff)
-                    retry_delay=$((retry_delay * 2))
-                    continue
+        local curl_exit_code=$?
+        local http_code=$(echo "$response" | tail -n1)
+        local response_body=$(echo "$response" | head -n -1)
+
+        case $curl_exit_code in
+            0)
+                if resolveGismtStatusResponse "$response_body" "$http_code"; then
+                    local total_elapsed=$(( $(date +%s) - start_time ))
+                    log_success "Настройка ГИС МТ завершена успешно за ${total_elapsed} секунд"
+                    return 0
                 else
-                    log_error "Исчерпаны все попытки ($max_attempts)"
+                    local result_code=$?
+                    if [ $result_code -eq 2 ]; then
+                        # Нужно повторить
+                        if [ $attempt -lt $max_attempts ]; then
+                            log_info "Повтор через ${retry_delay} секунд..."
+                            sleep $retry_delay
+                            # Увеличиваем задержку для следующей попытки (exponential backoff)
+                            retry_delay=$((retry_delay * 2))
+                            continue
+                        else
+                            log_error "Исчерпаны все попытки ($max_attempts)"
+                        fi
+                    else
+                        return 1
+                    fi
                 fi
-            else
-                return 1
-            fi
-        fi
-        ;;
-    28)
-        log_error "Таймаут запроса (${attempt_timeout}с)"
-        if [ $attempt -lt $max_attempts ]; then
-            log_info "⏳ Повтор через ${retry_delay} секунд..."
-            sleep $retry_delay
-            retry_delay=$((retry_delay * 2))
-            continue
-        fi
-        ;;
-    7)
-        log_error "Не удалось подключиться к серверу $API_BASE"
-        if [ $attempt -lt $max_attempts ]; then
-            log_info "⏳ Повтор через ${retry_delay} секунд..."
-            sleep $retry_delay
-            retry_delay=$((retry_delay * 2))
-            continue
-        fi
-        ;;
-    *)
-        log_error "Неизвестная ошибка curl: $?"
-        ;;
-    esac
+                ;;
+            28)
+                log_error "Таймаут запроса (${attempt_timeout}с)"
+                ;;
+            7)
+                log_error "Не удалось подключиться к серверу $API_BASE"
+                ;;
+            *)
+                log_error "Ошибка curl (код: $curl_exit_code)"
+                ;;
+        esac
 
-    if [ $attempt -lt $max_attempts ]; then
-        log_info "Повтор через ${retry_delay} секунд..."
-        sleep $retry_delay
-        retry_delay=$((retry_delay * 2))
-    fi
+        if [ $attempt -lt $max_attempts ]; then
+            log_info "Повтор через ${retry_delay} секунд..."
+            sleep $retry_delay
+            retry_delay=$((retry_delay * 2))
+        fi
     done
+
     log_error "Не удалось настроить ГИС МТ после $max_attempts попыток"
     log_info ""
     log_info "Рекомендации по устранению:"
-    log_info "  1. Проверьте доступность API: curl -v $API_BASE/health"
-    log_info "  2. Проверьте сетевые настройки и firewall"
-    log_info "  3. Попробуйте настроить вручную"
+    log_info "  1. Проверьте сетевые настройки и firewall"
+    log_info "  2. Попробуйте настроить вручную"
     log_info ""
-      return 1
+    return 1
 }
 
 
@@ -1068,12 +1098,13 @@ main() {
     parse_arguments "$@"
     echo_configuration
     log_info "Получение списка ККТ..."
+
+
     # 1. Получаем список ККТ
     if ! get_dkkt_list; then
         log_error "Не удалось получить данные ККТ"
         return 1
     fi
-
     # 2. Проверяем, что смена открыта на кассе, если нет - alert
     if ! check_shift_state; then
         return 1
@@ -1101,9 +1132,8 @@ main() {
     fi
 
     if ! setupGismtAddress; then
-        log_error "Ошибка на этапе подключения к экземпляру локального модуля для ЛМ ЧЗ через API"
+        log_error "Ошибка на этапе регистрации в системе ГИСМТ"
         log_error "Проверяем наличие ГИСМТ адреса в конфигурационном файле"
-
         # TODO возможно улучшить в версии v2
         if ! check_gismt_config; then
             log_info "Пока непонятно что с этим делать"
