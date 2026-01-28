@@ -635,6 +635,8 @@ setupGismtAddress() {
                   ;;
           esac
       done
+    else
+      gismt_address$GISMT_ADDRESS
     fi
 
    if [ -z "COMPATIBILITY_MODE"]; then
@@ -658,6 +660,8 @@ setupGismtAddress() {
                   ;;
           esac
       done
+     else
+       compatibility_mode=$COMPATIBILITY_MODE
     fi
 
     if [ -z "$ALLOW_REMOTE_CONNECTION"]; then
@@ -681,6 +685,8 @@ setupGismtAddress() {
                   ;;
           esac
       done
+      else
+      allow_remote=$ALLOW_REMOTE_CONNECTION
     fi
     log_info "Параметры ГИС МТ:"
     log_info "  Режим совместимости: $compatibility_mode"
