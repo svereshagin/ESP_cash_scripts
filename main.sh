@@ -236,7 +236,7 @@ check_env_file() {
 }
 
 execute_esm_install_script() {
-  script_file="install_esm_tinycore.sh"
+  script_file="install_esm.sh"
   local remote_cmd="
           echo '=== Запуск скрипта  ==='
           cd /home/tc

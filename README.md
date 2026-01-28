@@ -72,13 +72,13 @@
 
 ```bash
 # Скачайте скрипт напрямую
-curl -O https://raw.githubusercontent.com/svereshagin/ESP_cash_scripts/main/install_esm_tinycore.sh
+curl -O https://raw.githubusercontent.com/svereshagin/ESP_cash_scripts/main/install_esm.sh
 
 # Сделайте исполняемым
-chmod +x install_esm_tinycore.sh
+chmod +x install_esm.sh
 
 # Запустите в интерактивном режиме
-sudo ./install_esm_tinycore.sh --default
+sudo ./install_esm.sh --default
 ```
 
 ### Способ 2: Клонирование репозитория (для расширенной работы)
@@ -116,7 +116,7 @@ ALLOW_REMOTE_CONNECTION=true
 ### Способ 3: Быстрый запуск с флагами
 
 ```bash
-sudo ./install_esm_tinycore.sh \
+sudo ./install_esm.sh \
     --LM_CZ_ADDRESS "10.9.130.12" \
     --LM_CZ_PORT "50063" \
     --LM_CZ_LOGIN "admin" \
@@ -153,7 +153,7 @@ vi install_esm.sh
    - **В PuTTY:** Правая кнопка мыши или `Shift + Insert`
    - **В терминале Linux:** `Ctrl + Shift + V`
 3. Основные скрипты для вставки:
-   - `install_esm_tinycore.sh` - основной скрипт установки ESM
+   - `install_esm.sh` - основной скрипт установки ESM
    - Скрипты из `scripts_per_host/` - дополнительные утилиты проверки
 
 #### Шаг 3: Сохранение и выход из редактора
