@@ -507,11 +507,11 @@ resolveGismtStatusResponse() {
   log_info "resolveGismtStatusResponse Ответ: $body (HTTP $http_code)"
   case "$http_code" in
       000)
-        log_error "❌ Ошибка сети/таймаут - нет соединения с сервером"
+        log_error "Ошибка сети/таймаут - нет соединения с сервером"
         return 2  # Специальный код для повторной попытки
         ;;
       200|201|204)
-        log_success "✅ Настройки ГИС МТ успешно применены"
+        log_success "Настройки ГИС МТ успешно применены"
         ;;
       400)
         log_error "Ошибка 400: Неверный запрос. Проверьте данные JSON"

@@ -1,7 +1,4 @@
 #!/bin/bash
-
-
-#Configuration
 #need to have ssh-pass to connect to the server
 #brew install hudochenkov/sshpass/sshpass for macos
 
