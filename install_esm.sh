@@ -100,7 +100,7 @@ parse_kkt_response() {
     debug_log "Используем sed для парсинга JSON"
     # Fallback на sed если jq не установлен
     KKT_SERIAL=$(echo "$response" | sed -n 's/.*"kktSerial":"\([^"]*\)".*/\1/p')
-    FN_SERIAKKT_ID=""L=$(echo "$response" | sed -n 's/.*"fnSerial":"\([^"]*\)".*/\1/p')
+    FN_SERIAL=$(echo "$response" | sed -n 's/.*"fnSerial":"\([^"]*\)".*/\1/p')
     KKT_INN=$(echo "$response" | sed -n 's/.*"kktInn":"\([^"]*\)".*/\1/p')
     KKT_RNM=$(echo "$response" | sed -n 's/.*"kktRnm":"\([^"]*\)".*/\1/p')
     MODEL_NAME=$(echo "$response" | sed -n 's/.*"modelName":"\([^"]*\)".*/\1/p')
@@ -593,7 +593,7 @@ setupGismtAddress() {
     local gismt_address=""
     local compatibility_mode=""
     local allow_remote=""
-    if [ -z "$GISMT_ADDRESS" ]; then
+    if [ -z "$GISMT_ADDRESS"]; then
       log_info "Адрес GISMT не указан"    # Исправленный блок ввода адреса
       while true; do
           read -p "Введите адрес для GISMT (дефолтный: https://ts-reg.crpt.ru:19100) : " gismt_address
@@ -636,10 +636,10 @@ setupGismtAddress() {
           esac
       done
     else
-      gismt_address="$GISMT_ADDRESS"
+      gismt_address$GISMT_ADDRESS
     fi
 
-   if [ -z "$COMPATIBILITY_MODE" ]; then
+   if [ -z "$COMPATIBILITY_MODE"]; then
       log_info "COMPATIBILITY_MODE не указан"    #
       while true; do
           read -p "Режим совместимости? (true/false) [false]: " compatibility_mode
@@ -664,7 +664,7 @@ setupGismtAddress() {
        compatibility_mode=$COMPATIBILITY_MODE
     fi
 
-    if [ -z "$ALLOW_REMOTE_CONNECTION" ]; then
+    if [ -z "$ALLOW_REMOTE_CONNECTION"]; then
         log_info "ALLOW_REMOTE_CONNECTION не указан"
       while true; do
           read -p "Разрешить удаленные подключения? (true/false) [true]: " allow_remote
