@@ -3,7 +3,7 @@
 SERVER="10.9.130.187"
 USER="tc"
 PASSWORD="324012"
-FILE="install_esm.sh"
+FILE="setup.sh"
 REMOTE_PATH="/home/tc/"
 
 # Опции SSH для старых серверов

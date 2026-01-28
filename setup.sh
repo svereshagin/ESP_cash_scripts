@@ -593,7 +593,7 @@ setupGismtAddress() {
     local gismt_address=""
     local compatibility_mode=""
     local allow_remote=""
-    if [ -z "$GISMT_ADDRESS"]; then
+    if [ -z "$GISMT_ADDRESS" ]; then
       log_info "Адрес GISMT не указан"    # Исправленный блок ввода адреса
       while true; do
           read -p "Введите адрес для GISMT (дефолтный: https://ts-reg.crpt.ru:19100) : " gismt_address
@@ -636,10 +636,10 @@ setupGismtAddress() {
           esac
       done
     else
-      gismt_address$GISMT_ADDRESS
+      gismt_address=$GISMT_ADDRESS
     fi
 
-   if [ -z "$COMPATIBILITY_MODE"]; then
+   if [ -z "$COMPATIBILITY_MODE" ]; then
       log_info "COMPATIBILITY_MODE не указан"    #
       while true; do
           read -p "Режим совместимости? (true/false) [false]: " compatibility_mode
@@ -664,7 +664,7 @@ setupGismtAddress() {
        compatibility_mode=$COMPATIBILITY_MODE
     fi
 
-    if [ -z "$ALLOW_REMOTE_CONNECTION"]; then
+    if [ -z "$ALLOW_REMOTE_CONNECTION" ]; then
         log_info "ALLOW_REMOTE_CONNECTION не указан"
       while true; do
           read -p "Разрешить удаленные подключения? (true/false) [true]: " allow_remote
@@ -1140,12 +1140,12 @@ main() {
     if ! setupGismtAddress; then
         log_error "Ошибка на этапе регистрации в системе ГИСМТ"
         log_error "Проверяем наличие ГИСМТ адреса в конфигурационном файле"
-        # TODO возможно улучшить в версии v2
         if ! check_gismt_config; then
             log_info "Пока непонятно что с этим делать"
         fi
     fi
 
+    sleep 2.5 #задержка, т.к иногда марка возвращается как 514
     if ! check_mark; then
         log_error "Проверка марки прошла проблемно"
         exit 1

@@ -75,10 +75,10 @@
 curl -O https://raw.githubusercontent.com/svereshagin/ESP_cash_scripts/main/install_esm.sh
 
 # Сделайте исполняемым
-chmod +x install_esm.sh
+chmod +x setup.sh
 
 # Запустите в интерактивном режиме
-sudo ./install_esm.sh --default
+sudo ./setup.sh --default
 ```
 
 ### Способ 2: Клонирование репозитория (для расширенной работы)
@@ -116,7 +116,7 @@ ALLOW_REMOTE_CONNECTION=true
 ### Способ 3: Быстрый запуск с флагами
 
 ```bash
-sudo ./install_esm.sh \
+sudo ./setup.sh \
     --LM_CZ_ADDRESS "10.9.130.12" \
     --LM_CZ_PORT "50063" \
     --LM_CZ_LOGIN "admin" \
@@ -144,7 +144,7 @@ sudo ./install_esm.sh \
 #### Шаг 1: Создание файла скрипта
 ```bash
 # Создайте файл через редактор vi (доступен на TinyCore)
-vi install_esm.sh
+vi setup.sh
 ```
 
 #### Шаг 2: Вставка содержимого скрипта
@@ -153,7 +153,7 @@ vi install_esm.sh
    - **В PuTTY:** Правая кнопка мыши или `Shift + Insert`
    - **В терминале Linux:** `Ctrl + Shift + V`
 3. Основные скрипты для вставки:
-   - `install_esm.sh` - основной скрипт установки ESM
+   - `setup.sh` - основной скрипт установки ESM
    - Скрипты из `scripts_per_host/` - дополнительные утилиты проверки
 
 #### Шаг 3: Сохранение и выход из редактора
@@ -169,13 +169,13 @@ vi install_esm.sh
 
 **Вариант A: Интерактивный режим (рекомендуется для новичков)**
 ```bash
-sh install_esm.sh --default
+sh setup.sh --default
 ```
 В этом режиме скрипт будет запрашивать все необходимые параметры пошагово.
 
 **Вариант B: Запуск с флагами**
 ```bash
-sh install_esm.sh \
+sh setup.sh \
     --LM_CZ_ADDRESS "10.9.130.12" \
     --LM_CZ_PORT "50063" \
     --LM_CZ_LOGIN "admin" \
@@ -197,13 +197,13 @@ ESC -> :q!
 ESC -> :w новое_имя.sh
 
 # Просмотр содержимого файла
-cat install_esm.sh
+cat setup.sh
 
 # Удаление файла
-rm install_esm.sh
+rm setup.sh
 
 # Изменение прав доступа
-chmod +x install_esm.sh
+chmod +x setup.sh
 ```
 
 ---
