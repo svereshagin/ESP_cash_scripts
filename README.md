@@ -184,6 +184,10 @@ sh install_esm.sh \
     --COMPATIBILITY_MODE "false" \
     --ALLOW_REMOTE_CONNECTION "true"
 ```
+
+
+
+
 #### Управление редактором vi (полезные команды)
 ```bash
 # Если нужно выйти без сохранения
