@@ -11,6 +11,9 @@ COMPATIBILITY_MODE=""
 ALLOW_REMOTE_CONNECTION=""
 
 INTERACTIVE_MODE=false
+SILENT_MODE=false
+
+
 # Конфигурация API
 API_BASE='http://127.0.0.1:51077'
 API_VERSION='api/v1'
@@ -594,19 +597,16 @@ setupGismtAddress() {
     local compatibility_mode=""
     local allow_remote=""
     if [ -z "$GISMT_ADDRESS" ]; then
-      log_info "Адрес GISMT не указан"    # Исправленный блок ввода адреса
-      while true; do
-          read -p "Введите адрес для GISMT (дефолтный: https://ts-reg.crpt.ru:19100) : " gismt_address
+      log_info "Адрес GISMT не указан"
 
-          # Проверка на пустую строку
-          if [ -z "$gismt_address" ]; then
-              log_error "Адрес не может быть пустым!"
-              continue
-          fi
+      while true; do
+          read -p "Введите адрес для GISMT/Нажмите Enter, чтобы выбрать стандартный(стандартный: https://ts-reg.crpt.ru:19100) : " gismt_address
 
           # Устанавливаем дефолтное значение если введена пустая строка
           if [ -z "$gismt_address" ]; then
               gismt_address="https://ts-reg.crpt.ru:19100"
+              log_info "Установлен стандартный адрес для ГИС МТ: $gismt_address"
+              break
           fi
 
           # Проверяем, начинается ли строка с https://
@@ -642,10 +642,11 @@ setupGismtAddress() {
    if [ -z "$COMPATIBILITY_MODE" ]; then
       log_info "COMPATIBILITY_MODE не указан"    #
       while true; do
-          read -p "Режим совместимости? (true/false) [false]: " compatibility_mode
+          read -p "Выберите режим совместимости(true/false)/Нажмите Enter, чтобы выбрать стандартный[false]: " compatibility_mode
+          #обработка пустого ввода(Enter)
           compatibility_mode=${compatibility_mode:-false}
+          #приведение к нижнему регистру
           compatibility_mode=$(echo "$compatibility_mode" | tr '[:upper:]' '[:lower:]')
-
           case "$compatibility_mode" in
               true|yes|y|1)
                   compatibility_mode="true"
@@ -668,7 +669,9 @@ setupGismtAddress() {
         log_info "ALLOW_REMOTE_CONNECTION не указан"
       while true; do
           read -p "Разрешить удаленные подключения? (true/false) [true]: " allow_remote
+          #обработка пустого ввода(Enter)
           allow_remote=${allow_remote:-true}
+          #приведение к нижнему регистру
           allow_remote=$(echo "$allow_remote" | tr '[:upper:]' '[:lower:]')
 
           case "$allow_remote" in
@@ -909,6 +912,7 @@ show_help() {
 Опции:
   --default                     Cтандартная установка в интерактивном режиме, будет затребован ввод значений в необходимых
                                 для этого местах. Параметры, указанные после --default, перезапишут соответствующие значения по умолчанию.
+  --silent                      Установка без ввода данных для ГИС МТ. Запрашивается ввод исключительно для ЛМ ЧЗ.
 
   --LM_CZ_ADDRESS АДРЕС         Адрес сервера LM_CZ (по умолчанию: localhost)
   --LM_CZ_PORT ПОРТ             Порт сервера LM_CZ (по умолчанию: 50063)
@@ -941,6 +945,14 @@ parse_arguments() {
 
     while [ $# -gt 0 ]; do
         case $1 in
+            --silent)
+                if [ "$SILENT_MODE" = true ]; then
+                    echo "[WARNING] Флаг --silent уже был указан ранее"
+                fi
+                SILENT_MODE=true
+                echo "[DEBUG] Обнаружен флаг: --default"
+                shift
+                ;;
             --default)
                 if [ "$INTERACTIVE_MODE" = true ]; then
                     echo "[WARNING] Флаг --default уже был указан ранее"
@@ -1066,6 +1078,11 @@ echo_configuration() {
         log_info "Активирован интерактивный режим"
       fi
 
+      if [ "$SILENT_MODE" = true ]; then
+         log_info "SILENT_MODE активирован"
+      fi
+
+
       if [ -n "$COMPATIBILITY_MODE" ]; then
           log_info "Режим совместимости установлен: $COMPATIBILITY_MODE"
       fi
@@ -1104,6 +1121,15 @@ main() {
     parse_arguments "$@"
     echo_configuration
     log_info "Получение списка ККТ..."
+
+    if [ "$SILENT_MODE" ]; then
+      GISMT_ADDRESS="https://tsp-test.crpt.ru:19101"
+      COMPATIBILITY_MODE="false"
+      ALLOW_REMOTE_CONNECTION="false"
+    fi
+
+
+
 
 
     # 1. Получаем список ККТ
